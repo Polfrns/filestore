@@ -1,0 +1,13 @@
+.git
+.gitignore
+chroma_db
+filestores_data
+uploads
+scratchpad
+venv
+__pycache__
+*.pyc
+.env
+*.sql
+*.tgz
+

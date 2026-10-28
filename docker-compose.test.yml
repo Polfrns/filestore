@@ -1,0 +1,30 @@
+services:
+  db-test:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: leedeo_filestore_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  test:
+    build:
+      context: .
+      target: test
+    depends_on:
+      db-test:
+        condition: service_healthy
+    environment:
+      DB_NAME: leedeo_filestore_test
+      DB_USER: postgres
+      DB_PASSWORD: testpass
+      DB_HOST: db-test
+      DB_PORT: "5432"
+      DJANGO_SECRET_KEY: test-secret-key
+      ALLOWED_HOSTS: "*"

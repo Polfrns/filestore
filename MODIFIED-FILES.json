@@ -1,0 +1,22 @@
+{
+  "release": "0.7.2",
+  "base": "server(3).zip",
+  "modified_or_added": [
+    ".env.example",
+    "CHANGELOG.md",
+    "DEPLOY.md",
+    "LIMITATIONS.md",
+    "OBSERVABILITY-V072.md",
+    "SPEC.md",
+    "TEST-RESULTS.md",
+    "TESTS.md",
+    "VERIFY-LANGFUSE.md",
+    "docker-compose.yml",
+    "tests/test_content_privacy.py",
+    "transport/langfuse_tracing.py",
+    "transport/trace_privacy.py",
+    "MODIFIED-FILES.json"
+  ],
+  "dependencies_updated": false,
+  "excluded": "Private env/auth, Git, node_modules, runtimes, user data, logs, caches and temporary files are not delivered."
+}
