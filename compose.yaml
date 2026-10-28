@@ -1,0 +1,46 @@
+services:
+  roko-workspace:
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+      - apparmor:unconfined
+    pids_limit: 256
+    mem_limit: 4g
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    volumes:
+      - workspace-data:/data
+    env_file: .env
+    environment:
+      WORKSPACE_DATA_DIR: /data
+      WORKSPACE_HOST: 0.0.0.0
+      PORT: 8080
+    networks:
+      egress: {}
+      roko-workspace:
+        aliases: [roko-workspace]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  workspace-data:
+
+networks:
+  # One-service egress network for Langfuse OTLP. Apply host firewall rules for the approved Langfuse endpoint.
+  egress: {}
+  # Create this as an internal network and attach only Roko api and this service.
+  roko-workspace:
+    name: roko-workspace
+    external: true

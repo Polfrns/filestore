@@ -1,23 +1,11 @@
-# Actualización v0.7.2
+# Current limits and integration boundaries
 
-v0.7.2 añade contenido debug filtrado y una raíz de streaming; no captura procesos SDK invisibles. Véanse las limitaciones actuales, títulos anticipados, proyectos separados, modos y alcance temporal en [OBSERVABILITY-V072.md](OBSERVABILITY-V072.md).
-
-## Histórico v0.7.1
-
-# Límites y cobertura real
-
-- No se emiten llamadas deducidas de la intención del usuario, del texto de la respuesta ni de la extensión solicitada. `file.generated.*` acredita un archivo realmente recogido y validado por el flujo existente; no afirma qué comando lo creó.
-- Codex 0.161.0 expone command_execution, file_change, mcp_tool_call, web_search, todo_list y mensajes/razonamiento. Estos últimos no se registran como herramientas. No expone por separado cada lectura, escritura, mkdir o acceso web dentro de un proceso shell. Esos subpasos no se inventan.
-- Python/JavaScript solo se clasifican ante un ejecutable directo reconocido. Comandos compuestos, shell wrappers, redirecciones con separadores y comandos ambiguos conservan command_execution. No se presume code.test, web.download o workspace.read porque aparezca una palabra en un comando.
-- Los cambios Codex se clasifican por changes.kind; cambios mixtos quedan file_change. WebSearch/WebFetch, Read/Write/Edit, Glob/Grep se clasifican cuando el SDK Claude los comunica. Su registro no habilita herramientas que las políticas actuales de Claude mantienen deshabilitadas.
-- La duración de una operación SDK sin evento de inicio no es recuperable. Su span incluye missingStart=true; no se muestra una duración inventada. El instante de exportación no demuestra cuándo empezó la acción.
-- Los reintentos del ciclo de reparación de artefactos son conocidos y llevan attempt 1/2. Reintentos internos de red/modelo no expuestos por el SDK no se inventan. La generación model.codex/model.claude mide la ejecución del proveedor y agrega uso de sus turnos de reparación; no descompone submodelos internos.
-- Los eventos generados por el Bridge corresponden a preparación, snapshot/listado, recogida y validación realmente invocados. La instrumentación no añade ejecuciones de validación ni comandos al sandbox. El toolkit conserva su comportamiento previo si faltan utilidades opcionales; una llamada de validación no garantiza que exista cada validador externo.
-- Las observaciones de inicio existen en memoria; Langfuse recibe normalmente spans finalizados. Las tarjetas sí se actualizan en streaming. Un SIGKILL/crash de proceso puede impedir exportar spans no terminados; no se promete un cierre después de matar el proceso.
-- Límite de 1000 operaciones distintas por petición en el Bridge y 1000 tarjetas; no se repiten las terminaciones ya vistas. La exportación es asíncrona y de mejor esfuerzo, con colas acotadas; una caída prolongada puede descartar telemetría. No se reintenta una herramienta por un fallo de telemetría.
-- Solo se aceptan contextos remotos firmados con antigüedad máxima de 60 segundos, además de la autenticación normal. La identidad Roko conserva su verificación independiente de 10 minutos. MCP stdio, llamadas directas de otros hosts o conexiones sin contexto firmado producen trazas locales sin sesión de conversación; no se atribuyen a una conversación arbitraria.
-- Los clientes MCP HTTP actuales se conservan; no se exige modificar el protocolo MCP. Solo se agregan cabeceras HTTP por petición. No se habilita acceso a destinos nuevos, dominios externos, lectura o escritura adicional.
-- La telemetría HTTP/Undici automática general de Roko queda deshabilitada para impedir extracción de cabeceras de clientes arbitrarios y propagación indiscriminada. La correlación explícita autorizada de Bridge y MCP permanece. Otras instrumentaciones de backend se exportan con el mismo filtro privado.
-- Exportadores identificados: Langfuse directo del Bridge; procesador Langfuse de @librechat/agents 3.2.35 (LangChain callbacks, generaciones, títulos y ToolNode); SDK OTLP general de Roko; OTLP explícito de transport/langfuse_tracing.py. Feedback de Roko envía puntuaciones y metadatos de feedback, no documentos. Un exportador adicional instalado fuera de estos ZIP requiere una revisión adicional.
-- El parche de agents cubre CJS/ESM en instalación/build. No es una bifurcación antigua del SDK. Se verifica su versión y sus puntos de inserción; nuevas versiones requieren adaptar y probar el parche antes de desplegar.
-- No se han ejecutado inferencias reales con suscripciones, despliegues Docker, pruebas con tu PostgreSQL de producción ni inspección de la UI Langfuse. Sí se compilan los paquetes y se prueban contratos y exportaciones locales. La prueba integral de Filestore usa SQLite y no certifica características específicas de PostgreSQL.
+- This repository implements the roko-workspace service. Roko's client-side async-context signing, global MCP toggle, Bridge model filtering, chat attachment tools, conversation deletion integration, and legacy sessions/filestores removal remain required separate changes in the Roko repository.
+- Signed request contexts can be replayed for up to ten minutes for the same conversation. HMAC prevents changing tenant/user/conversation identity; a nonce store is intentionally not used.
+- Shell inputs/ read-only enforcement uses a nested read-only bind mount sourced from an open directory descriptor. The startup canary checks it in the Linux container and keeps the service unavailable if the rule fails.
+- Application quotas do not cap writes during a running shell command. Use a filesystem quota on the Docker data volume.
+- Docker Compose provides an egress network so Langfuse can be reached; host firewall rules must restrict it to the approved Langfuse endpoint.
+- Only Linux Docker is supported. Windows and non-containerized execution are out of scope.
+- The seccomp filter supports Linux x86_64 and ARM64. The current integration environment exercises x86_64 only; ARM64 remains unverified.
+- Output validation covers supported file formats and installed file-tools.py validators. It does not prove that a document's content is correct.
+- The 30-minute TTL is based on last authenticated use. A workspace may expire while its conversation remains in Roko history.
