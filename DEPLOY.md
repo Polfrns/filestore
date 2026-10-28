@@ -1,79 +1,48 @@
-# Actualización v0.7.2
+# Workspace service deployment
 
-Instrucciones actuales de esta entrega: [OBSERVABILITY-V072.md](OBSERVABILITY-V072.md). Incluye variables, despliegue, recreación por imagen fijada y rollback.
+Deploy on the Linux VM that already runs Roko and Bridge. Do not deploy to the legacy filestore VM. Compose publishes no host port and expects a separate Docker network shared with Roko.
 
-## Histórico v0.7.1
+## 1. Prepare Docker networking
 
-# Despliegue v0.7.1
+Create the private network once:
 
-Los archivos son repositorios completos de código, sin datos persistentes, logins ni .env. Mantén tus volúmenes y tu .env actuales. No ejecutes `down -v`. Antes de cambiar nada conserva una copia del código/configuración y etiqueta las imágenes actualmente instaladas como rollback. No se han aplicado cambios a tus servidores desde este entorno.
+    docker network create --internal roko-workspace
 
-## 1. Variables
+Attach only the Roko api service and roko-workspace container to this network. Configure Roko with ROKO_WORKSPACE_URL=http://roko-workspace:8080 and the same ROKO_WORKSPACE_KEY as this service.
 
-Bridge y Roko deben conservar el mismo BRIDGE_API_KEY / CLAUDE_BRIDGE_KEY que ya usas. Esta clave también fija la identidad de Sessions: si la rotas, las sesiones nuevas tendrán otra seudonimización. No cambies sus valores al copiar .env.example.
+The workspace container also joins a separate Compose egress network for Langfuse. Apply host firewall rules to allow only the configured Langfuse address and port. The private roko-workspace network is internal and has no outside route.
 
-Añade la misma nueva OBSERVABILITY_TRACE_SECRET aleatoria (>=32 caracteres) a los .env de Roko, Bridge y Filestore. Puedes generarla localmente con `openssl rand -hex 32`; no la publiques ni la pongas en runtime-config.yaml. El secreto de trazado no sustituye ninguna API key ni permiso.
+## 2. Configure and build
 
-En Roko configura OBSERVABILITY_TRACE_TARGETS con las URL exactas de servicios autorizados. Ejemplo cuando Bridge comparte la red Docker cli y Filestore es una VM:
+Generate a random secret with at least 32 characters, set the same value as ROKO_WORKSPACE_KEY in this service and Roko, and create the local environment file:
 
-```dotenv
-ROKO_BRIDGE_BASE_URL=http://cli-bridge:4000/v1
-OBSERVABILITY_TRACE_TARGETS=http://cli-bridge:4000/v1,http://192.168.1.50:8000/mcp
-OBSERVABILITY_FILE_NAMES=false
-OTEL_TRACES_SAMPLER=always_on
-LANGFUSE_FORCE_FLUSH_ON_DISPOSE=false
-```
+    cp .env.example .env
+    openssl rand -hex 32
 
-Sustituye la IP y el path MCP por los reales de tu configuración. Una URL autoriza su path y descendientes, con el mismo esquema/origen/puerto; no autoriza otros dominios. No uses comodines. El código mantiene las restricciones SSRF y de red existentes: esta variable no autoriza conexiones que el cliente MCP ya tenga prohibidas. Si Bridge sigue en host.docker.internal, usa esa misma URL en ambas variables. No publiques Bridge en 0.0.0.0 para resolver conectividad.
+Put the generated value in both .env files. Fill Langfuse credentials only if exporting traces. Keep OBSERVABILITY_CONTENT_MODE=redacted unless bounded debug content is deliberately required.
 
-En los tres servicios conserva LANGFUSE_BASE_URL, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY y LANGFUSE_TRACING_ENABLED=true. Bridge/Filestore ya pasan el .env o las variables necesarias; Roko añade las nuevas variables al override incluido. Para verificar cada operación usa OTEL_TRACES_SAMPLER=always_on; muestrear menos es una elección operativa posterior.
+Check Compose without printing its expanded configuration, then build and start:
 
-Los proyectos siguen siendo independientes por sus credenciales: Roko+Bridge usan las del proyecto Roko y Filestore las del proyecto Filestore. Para obtener un árbol común configura deliberadamente las mismas credenciales de proyecto en los tres servicios. Los nombres de proyecto en la interfaz no son variables que haya que enviar. No existe un árbol navegable único entre dos proyectos distintos.
+    docker compose -f compose.yaml config -q
+    docker compose -f compose.yaml build roko-workspace
+    docker compose -f compose.yaml up -d roko-workspace
+    docker compose -f compose.yaml ps
+    docker compose -f compose.yaml logs --tail=50 roko-workspace
 
-## 2. Bridge (en la carpeta del repo)
+The process listens on container port 8080 only. A healthy container means the startup canary passed its workspace write, outside read/write, inputs/ read-only, and network probes. If it remains unhealthy, inspect its logs and run npm run check:workspace inside the image. Execution stays disabled while the canary fails.
 
-```bash
-docker compose -f compose.yaml config -q
-docker compose -f compose.yaml build bridge
-docker compose -f compose.yaml up -d --no-deps bridge
-docker compose -f compose.yaml ps
-docker compose -f compose.yaml exec bridge node scripts/healthcheck.mjs
-```
+## 3. Storage and permissions
 
-Mantén el nombre de proyecto y los volúmenes logins/runtime originales. No hay que repetir los logins de Codex/Claude. Docker instala las dependencias desde el lockfile actualizado. En ejecución local: `npm ci`, `npm test`; no copies node_modules ni runtime-tools de Windows a Linux.
+The named volume persists workspace data and the service removes idle workspaces after 30 minutes. Put the Docker volume on a filesystem with a 20 GiB quota; application quotas do not stop a shell command temporarily filling the filesystem.
 
-## 3. Roko (en la carpeta de tu instalación)
+The service runs bubblewrap with Linux user, PID, IPC, UTS, and network namespaces. It drops all capabilities inside the sandbox, applies a seccomp filter against nested user namespaces, io_uring, and VSOCK, and exposes only the current workspace as writable. The service container drops all capabilities except SYS_ADMIN, uses no-new-privileges, and runs read-only except /data and /tmp. It does not mount the Docker socket or provider credentials.
 
-Mantén docker-compose.yml, el override incluido y runtime-config.yaml con tus ajustes de entorno. El ZIP incluye la configuración base del adjunto; no reemplaces tus volúmenes, usuarios ni historial. El build requiere los archivos de todos los workspaces adjuntos, incluido packages/roko-server.
+## 4. Rollback
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.override.yml config -q
-docker compose -f docker-compose.yml -f docker-compose.override.yml build api
-docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --no-deps api
-docker compose -f docker-compose.yml -f docker-compose.override.yml ps
-```
+Stop this Compose service and restore its prior image/configuration. Keep the Docker volume unless workspace data should be discarded. Remove the roko-workspace Docker network only after Roko no longer references it.
 
-El Dockerfile ejecuta scripts/patch-observability.cjs después de copiar el código y antes de la compilación. No elimina el parche al podar dependencias. El Dockerfile.multi también lo instala en la imagen final. Para instalación fuera de Docker: `npm ci`, `npm run observability:patch`, `npm run frontend` y tu comando backend habitual. Repite el parche después de cada reinstalación de node_modules. El build se detiene si cambia agents 3.2.35; revisa esa nueva versión antes de desplegar, para evitar exportar datos sin protección.
+No production server has been changed from this development environment.
 
-Si no usas Bridge configura una OBSERVABILITY_SESSION_SECRET persistente de >=32 caracteres en Roko. Cuando existe CLAUDE_BRIDGE_KEY, se usa esta última para que coincida con el Bridge.
+## Roko integration still required
 
-## 4. Leedeo-Filestore
-
-El despliegue ya no se realiza mediante pipeline. Ejecuta en la VM de Filestore `/opt/test.sh` y `/opt/deploy.sh` (o tu procedimiento equivalente) tras el merge a main.
-
-Añade las credenciales y OBSERVABILITY_TRACE_SECRET al .env del despliegue que ya utiliza /opt/deploy.sh. No se dispone del contenido de esos scripts externos y no se han sustituido ni ejecutado. Sube estos cambios al repositorio y haz que pasen por tu revisión/merge habitual a main. Antes del merge valida en la VM de despliegue:
-
-```bash
-docker compose -f docker-compose.yml config -q
-docker compose -f docker-compose.test.yml config -q
-```
-
-Servicios de producción: db con image postgres:16 y web con build; tests: db-test con image y test con build/target:test. No se añade un servicio solo con environment. Mantén los directorios chroma_db, filestores_data, uploads y el volumen pgdata originales. Si necesitas comprobarlo tras el despliegue: `docker compose ps` y `docker compose logs --tail=50 web` desde el directorio de despliegue.
-
-## 5. Verificación y rollback
-
-Sigue VERIFY-LANGFUSE.md y TEST-RESULTS.md. Nunca imprimas el Compose expandido ni los .env en logs compartidos.
-
-Para rollback, restaura el código y las imágenes etiquetadas antes del cambio, además de tu override anterior si lo cambiaste, y vuelve a ejecutar `up -d --no-deps` para bridge/api/web en su proyecto original. En Filestore revierte el commit mediante el flujo de revisión de main y vuelve a desplegar la versión previa. No hay migraciones de esquema de esta actualización. No restaures ni borres bases de datos o volúmenes para revertir observabilidad.
-
-Desactivar solo exportación: LANGFUSE_TRACING_ENABLED=false y recrear los servicios. Las tarjetas e inferencia siguen disponibles en Bridge. Para desactivar tarjetas usa BRIDGE_ACTIVITY_ENABLED=false y/o ROKO_BRIDGE_ACTIVITY_ENABLED=false; las observaciones del Bridge siguen activas independientemente de la visibilidad de tarjetas.
+This repository cannot deploy the Roko-side changes. Before enabling the MCP, Roko needs signed per-request async context, the global MCP toggle, Bridge model filter, explicit attach_chat_file and deliver_workspace_file tools, and the conversation deletion hook described in scratchpad/DISENO-workspace-mcp.md section 11. The existing attachment workflow must perform ownership and access checks before calling this service.

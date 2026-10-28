@@ -1,26 +1,30 @@
-FROM python:3.12-slim AS base
+FROM node:24-bookworm-slim AS runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv bubblewrap ca-certificates \
+       libreoffice-writer libreoffice-calc libreoffice-impress ffmpeg \
+       tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-cat tesseract-ocr-fra \
+       tesseract-ocr-por tesseract-ocr-deu tesseract-ocr-ita pandoc graphviz \
+       libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --include=optional --no-fund --no-update-notifier \
+    && rm -rf "$(npm config get cache)"
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+RUN node scripts/setup-files.mjs \
+    && mkdir -p /data \
+    && chown -R node:node /data /opt/roko-workspace-venv
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc && rm -rf /var/lib/apt/lists/*
+ENV WORKSPACE_DATA_DIR=/data WORKSPACE_HOST=0.0.0.0 PORT=8080 \
+    PATH=/opt/roko-workspace-venv/bin:$PATH
+USER node
+CMD ["node", "src/main.mjs"]
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-EXPOSE 8000
-
-FROM base AS test
-COPY requirements-dev.txt .
-RUN pip install --no-cache-dir -r requirements-dev.txt
-ENTRYPOINT []
-CMD ["pytest"]
-
-FROM base AS production
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["uvicorn", "leedeo_filestore.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+FROM runtime AS test
+COPY --chown=node:node test/ ./test/
+COPY --chown=node:node .env.example ./
+CMD ["npm", "test"]
