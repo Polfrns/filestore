@@ -35,7 +35,7 @@ The process listens on container port 8080 only. A healthy container means the s
 
 The named volume persists workspace data and the service removes idle workspaces after 30 minutes. Put the Docker volume on a filesystem with a 20 GiB quota; application quotas do not stop a shell command temporarily filling the filesystem.
 
-The service runs bubblewrap with Linux user, PID, IPC, UTS, and network namespaces. It drops all capabilities inside the sandbox, applies a seccomp filter against nested user namespaces, io_uring, and VSOCK, and exposes only the current workspace as writable. The service container drops all capabilities except SYS_ADMIN, uses no-new-privileges, and runs read-only except /data and /tmp. It does not mount the Docker socket or provider credentials.
+The service runs bubblewrap with Linux user, PID, IPC, UTS, and network namespaces. It drops all capabilities inside the sandbox, applies a seccomp filter against nested user namespaces, io_uring, and VSOCK, and exposes only the current workspace as writable. The service container drops all capabilities except SYS_ADMIN, uses no-new-privileges, and runs read-only except /data and /tmp. It also sets systempaths=unconfined: Docker masks parts of the container's /proc, and the kernel then refuses the fresh procfs that bubblewrap mounts for the sandbox's PID namespace ("Can't mount proc on /newroot/proc"). This unmasks /proc only for the outer container, whose service process runs as the unprivileged node user; sandboxed commands see their own procfs. It does not mount the Docker socket or provider credentials.
 
 ## 4. Rollback
 

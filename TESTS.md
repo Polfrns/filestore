@@ -10,7 +10,7 @@ test/unit/http-server.test.mjs verifies public health reports failed readiness, 
 
 ## Sandbox integration tests
 
-npm run test:sandbox runs bubblewrap in Docker with temporary workspaces. It verifies writable work/outputs/, readable but non-writable inputs/, sibling-data read/write denial, blocked nested user namespaces, network isolation against the service interface and an external TCP target, command timeout, and file-tools.py validation inside the sandbox. These checks require Docker-compatible Linux permissions and are not run on Windows.
+npm run test:sandbox runs bubblewrap in Docker with temporary workspaces. It verifies writable work/outputs/, readable but non-writable inputs/, sibling-data read/write denial, blocked nested user namespaces, network isolation against the service interface and an external TCP target, command timeout, and file-tools.py validation inside the sandbox. These checks require Docker-compatible Linux permissions and are not run on Windows. Run the container with the same security options as compose.yaml, including systempaths=unconfined; without it bubblewrap cannot mount the sandbox procfs and both tests fail with "Can't mount proc".
 
 ## Container verification
 
