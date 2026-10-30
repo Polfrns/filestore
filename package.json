@@ -11,7 +11,7 @@
     "start": "node src/main.mjs",
     "test": "node --test test/unit/*.test.mjs",
     "test:sandbox": "node --test --test-concurrency=1 --test-timeout=180000 test/sandbox/*.test.mjs",
-    "test:docker": "docker build --target test -t roko-workspace:test . && docker run --rm --cap-drop ALL --cap-add SYS_ADMIN --security-opt no-new-privileges:true --security-opt seccomp=unconfined --security-opt apparmor=unconfined --read-only --tmpfs /tmp:rw,nosuid,nodev,mode=1777 --tmpfs /data:rw,nosuid,nodev,mode=0700,uid=1000,gid=1000 roko-workspace:test",
+    "test:docker": "docker build --target test -t roko-workspace:test . && docker run --rm --cap-drop ALL --cap-add SYS_ADMIN --security-opt no-new-privileges:true --security-opt seccomp=unconfined --security-opt apparmor=unconfined --security-opt systempaths=unconfined --read-only --tmpfs /tmp:rw,nosuid,nodev,mode=1777 --tmpfs /data:rw,nosuid,nodev,mode=0700,uid=1000,gid=1000 roko-workspace:test",
     "check:workspace": "node scripts/check-workspace.mjs",
     "setup:files": "node scripts/setup-files.mjs"
   },

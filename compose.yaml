@@ -12,6 +12,8 @@ services:
       - no-new-privileges:true
       - seccomp:unconfined
       - apparmor:unconfined
+      # Docker's masked /proc paths make the kernel refuse bubblewrap's fresh procfs mount.
+      - systempaths=unconfined
     pids_limit: 256
     mem_limit: 4g
     tmpfs:
